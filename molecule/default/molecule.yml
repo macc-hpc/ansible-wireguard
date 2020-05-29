@@ -1,0 +1,19 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: vagrant
+  provider:
+    name: virtualbox
+lint: yamllint
+platforms:
+  - name: instance-02
+    box: centos/7
+  - name: instance-01
+    box: centos/7
+provisioner:
+  name: ansible
+  lint: ansible-lint
+verifier:
+  name: testinfra
+  lint: flake8

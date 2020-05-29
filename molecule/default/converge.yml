@@ -1,0 +1,8 @@
+---
+- name: Converge
+  become: yes
+  hosts: all
+  tasks:
+    - name: "Include wireguard"
+      include_role:
+        name: "wireguard"

@@ -1,0 +1,117 @@
+---
+
+- name: Add WireGuard repository
+  get_url:
+    url: https://copr.fedorainfracloud.org/coprs/jdoss/wireguard/repo/epel-7/jdoss-wireguard-epel-7.repo
+    dest: /etc/yum.repos.d/wireguard.repo
+  tags: vpn-wireguard
+
+- name: install EPEL repository
+  yum:
+    name:
+      - epel-release
+    update_cache: yes  
+  tags: vpn-wireguard
+
+- name: install WireGuard packages
+  package:
+    name:
+      - wireguard-dkms
+      - wireguard-tools
+    state: latest
+  tags: vpn-wireguard
+
+- name: load WireGuard kernel module
+  modprobe:
+    name: wireguard
+    state: present
+  tags: vpn-wireguard
+
+- name: create WireGuard configuration directory
+  file:
+    dest: "{{ wireguard_directory }}"
+    state: directory
+    mode: 0700
+  tags: vpn-wireguard
+
+- name: register config file existence
+  stat:
+    path: "{{ wireguard_directory }}/{{ wireguard_interface }}.conf"
+  register: reg_config
+  tags: vpn-wireguard
+
+- name: set WireGuard IP (without mask)
+  set_fact:
+    wireguard_ip: "{{ wireguard_address.split('/')[0] }}"
+
+- block:
+  - name: generate WireGuard private key
+    shell: "wg genkey"
+    register: reg_private_key
+    tags: vpn-wireguard
+  
+  - name: write private key
+    copy:
+      content: "{{ reg_private_key.stdout }}"
+      dest: "{{ wireguard_directory }}/private.key"
+      owner: root
+      group: root
+      mode: 0600
+    tags: vpn-wireguard
+
+  - name: derive WireGuard public key
+    shell: "echo '{{ reg_private_key.stdout }}' | wg pubkey"
+    register: reg_public_key
+    tags: vpn-wireguard
+
+  - name: write public key
+    copy:
+      content: "{{ reg_public_key.stdout }}"
+      dest: "{{ wireguard_directory }}/public.key"
+      owner: root
+      group: root
+      mode: 0600
+    tags: vpn-wireguard
+
+  when: not reg_config.stat.exists
+
+- name: read private key 
+  slurp: 
+    src: "{{ wireguard_directory }}/private.key"
+  register: reg_private_key
+
+- name: read public key 
+  slurp: 
+    src: "{{ wireguard_directory }}/public.key"
+  register: reg_public_key
+
+- name: set private key fact
+  set_fact:
+    private_key: "{{ reg_private_key }}"
+  tags: vpn-wireguard
+
+- name: set public key fact
+  set_fact:
+    public_key: "{{ reg_public_key }}"
+  tags: vpn-wireguard
+
+- name: stop WireGuard service
+  service:
+    name: "wg-quick@{{ wireguard_interface }}"
+    state: stopped
+    enabled: yes
+
+- name: generate WireGuard configuration file
+  template:
+    src: wg.conf.j2
+    dest: "{{ wireguard_directory }}/{{ wireguard_interface }}.conf"
+    owner: root
+    group: root
+    mode: 0600
+  tags: vpn-wireguard
+
+- name: start and enable WireGuard service
+  service:
+    name: "wg-quick@{{ wireguard_interface }}"
+    state: started
+    enabled: yes
